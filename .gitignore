@@ -1,0 +1,7 @@
+node_modules/
+test.js
+*.code-workspace
+*.bat
+*.rar
+*.zip
+*.7z
