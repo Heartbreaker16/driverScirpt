@@ -22,18 +22,19 @@ function getDateSchedule(time) {
   })
 }
 
-function makeAppointment(arr,timeNow,timeIndex = arr.length - 2,personIndex = 0) {
-  console.log(timeNow, timeIndex, personIndex)
-  if (timeIndex < 0 || personIndex < 0) return
-  if (!arr[timeIndex].person[personIndex])
-    uploadForm(timeIndex, personIndex, timeNow).then(
-      () => {
-        return
-      },
-      () =>
-        makeAppointment(arr, timeNow, timeIndex - personIndex, 1 - personIndex)
-    )
-  else makeAppointment(arr, timeNow, timeIndex - personIndex, 1 - personIndex)
+function makeAppointment(arr, timeNow, timeIndex = arr.length - 2, personIndex = 0) {
+  return new Promise((resolve, reject) => {
+    if (timeIndex < 0 || personIndex < 0) return
+    if (!arr[timeIndex].person[personIndex])
+      uploadForm(timeIndex, personIndex, timeNow).then(
+        res => {
+          if(res === 'ok') resolve('ok')
+        },
+        () =>
+          makeAppointment(arr, timeNow, timeIndex - personIndex, 1 - personIndex)
+      )
+    else makeAppointment(arr, timeNow, timeIndex - personIndex, 1 - personIndex)
+  })
 }
 
 function uploadForm(timeIndex, personIndex, day) {
@@ -51,7 +52,7 @@ function uploadForm(timeIndex, personIndex, day) {
       },
       (err, res, body) => {
         if (body.msg === '预约成功') {
-          fs.appendFile('log.txt',`success at ${day} ${timeIndex} ${personIndex}\n`,()=>{})
+          log(`success at ${day} ${timeIndex} ${personIndex}`)
           resolve('ok')
         } else reject(false)
       }
@@ -67,20 +68,29 @@ function timeNow() {
   }
 }
 
-function setDelay(timeObj){
-  if(timeObj.getHours() > 6 || timeObj.getHours() < 5) 
+function setDelay(timeObj, todayOK){
+  if(todayOK) return 3600000
+  else if(timeObj.getHours() > 6 || timeObj.getHours() < 5) 
     return 3600000
-  if(timeObj.getHours() === 5 || timeObj.getMinutes() < 59) 
+  else if(timeObj.getHours() === 5 && timeObj.getMinutes() < 59)
     return 60000
   else return 8000
 }
 
-function app() {
+function log(str){
+  fs.appendFile('log.txt', str + '\n', ()=>{})
+}
+
+function app(todayOK = false) {
   const time = timeNow()
-  fs.appendFile('log.txt',`${time.obj} ${time.sign}\n`,()=>{})
-  if (time.sign)
-    getDateSchedule(time.sign).then(schedule => makeAppointment(schedule, time.sign))
-  else setTimeout(() => app(), setDelay(time.obj))
+  log(`${time.obj} ${time.sign}`)
+  if (time.sign && !todayOK)
+    getDateSchedule(time.sign).then(schedule =>
+      makeAppointment(schedule, time.sign).then(res => {
+        if (res === 'ok') app(true)
+      })
+    )
+  else setTimeout(() => app(), setDelay(time.obj, todayOK))
 }
 
 app()
