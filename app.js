@@ -6,45 +6,47 @@ const header = {
 }
 const name = '李朝文'
 
-function getDateSchedule(time) {
+function getDateSchedule() {
   return new Promise((resolve, reject) => {
     request.get(
       {
-        url: 'http://eomis.cn/api/driverapp?day=' + time,
+        url: 'http://eomis.cn/api/driverapp?day=' + timeNow.sign,
         header
       },
       (err, res, body) => {
         body = JSON.parse(body)
         if (body.data && body.data.times) resolve(body.data.times)
-        else getDateSchedule(time)
+        else getDateSchedule(timeNow.sign).then( _res => { if (_res.length) resolve(_res) })
       }
     )
   })
 }
 
-function makeAppointment(arr, timeNow, timeIndex = arr.length - 2, personIndex = 0) {
+function makeAppointment(arr, timeIndex = arr.length - 2, personIndex = 0) {
   return new Promise((resolve, reject) => {
     if (timeIndex < 0 || personIndex < 0) return
-    if (!arr[timeIndex].person[personIndex])
-      uploadForm(timeIndex, personIndex, timeNow).then(
+    const person = arr[timeIndex].person[personIndex]
+    if(person === name) resolve('ok')
+    else if (!person)
+      uploadForm(timeIndex, personIndex).then(
         res => {
           if(res === 'ok') resolve('ok')
         },
         () =>
-          makeAppointment(arr, timeNow, timeIndex - personIndex, 1 - personIndex)
+          makeAppointment(arr, timeIndex - personIndex, 1 - personIndex).then(res => { if(res === 'ok') resolve('ok') })
       )
-    else makeAppointment(arr, timeNow, timeIndex - personIndex, 1 - personIndex)
+    else makeAppointment(arr, timeIndex - personIndex, 1 - personIndex).then(res => { if(res === 'ok') resolve('ok') })
   })
 }
 
-function uploadForm(timeIndex, personIndex, day) {
+function uploadForm(timeIndex, personIndex) {
   return new Promise((resolve, reject) => {
     request.post(
       {
         url: 'http://eomis.cn/api/makeapp',
         header,
         json: {
-          day,
+          day: timeNow.sign,
           name,
           personIndex,
           timeIndex
@@ -52,7 +54,7 @@ function uploadForm(timeIndex, personIndex, day) {
       },
       (err, res, body) => {
         if (body.msg === '预约成功') {
-          log(`success at ${day} ${timeIndex} ${personIndex}`)
+          log(timeIndex, personIndex)
           resolve('ok')
         } else reject(false)
       }
@@ -60,37 +62,55 @@ function uploadForm(timeIndex, personIndex, day) {
   })
 }
 
-function timeNow() {
-  const time = new Date()
-  return {
-    sign: time.getHours() === 6 ? `2019${time.getMonth()}${time.getDate()}` : false,
-    obj: time
+const timeNow = {
+  time: {},
+  sign: false,
+  refresh: () => {
+    timeNow.time = new Date()
+    timeNow.sign = timeNow.time.getHours() === 6 ? `2019${timeNow.time.getMonth()}${timeNow.time.getDate()}` : false
   }
 }
 
-function setDelay(timeObj, todayOK){
-  if(todayOK) return 3600000
-  else if(timeObj.getHours() > 6 || timeObj.getHours() < 5) 
+function setDelay(){
+  const timeObj = timeNow.time
+  if(timeObj.getHours() !== 5) 
     return 3600000
-  else if(timeObj.getHours() === 5 && timeObj.getMinutes() < 59)
+  else if(timeObj.getMinutes() < 59)
     return 60000
   else return 8000
 }
 
-function log(str){
-  fs.appendFile('log.txt', str + '\n', ()=>{})
+function log(timeIndex, personIndex){
+  const path = '../server/files/html/driverlog.html'
+  const time = timeNow.time
+  const remark = timeIndex ? ` ${timeIndex + 8} ~ ${timeIndex + 9} ${personIndex} success` : ''
+  fs.readFile(path, 'utf8', (err, data) => {
+    if (err) throw err
+    const newContent = data.replace('<body>',`<body>
+      <div${remark ? " class='red'" : ''}>${time.getFullYear()}-${time.getMonth()+1}-${time.getDate()} ${('0'+time.getHours()).slice(-2)}:${('0'+time.getMinutes()).slice(-2)}:${('0'+time.getSeconds()).slice(-2)}${remark}</div>
+    `)
+    console.log(timeIndex, personIndex,remark,time,`<body>
+    <div${remark ? " class='red'" : ''}>${time.getFullYear()}-${time.getMonth()+1}-${time.getDate()} ${('0'+time.getHours()).slice(-2)}:${('0'+time.getMinutes()).slice(-2)}:${('0'+time.getSeconds()).slice(-2)}${remark}</div>
+  `)
+    fs.writeFile(path, newContent, 'utf8', err => {
+      if (err) throw err
+      console.log('success done')
+    })
+  })
 }
 
-function app(todayOK = false) {
-  const time = timeNow()
-  log(`${time.obj} ${time.sign}`)
-  if (time.sign && !todayOK)
-    getDateSchedule(time.sign).then(schedule =>
-      makeAppointment(schedule, time.sign).then(res => {
-        if (res === 'ok') app(true)
+function app() {
+  timeNow.refresh()
+  if (timeNow.sign)
+    getDateSchedule().then(schedule =>
+      makeAppointment(schedule).then(res => {
+        if (res === 'ok') setTimeout(() => app(), setDelay())
       })
     )
-  else setTimeout(() => app(), setDelay(time.obj, todayOK))
+  else {
+    log()
+    setTimeout(() => app(), setDelay())
+  }
 }
 
 app()
