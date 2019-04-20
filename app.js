@@ -16,7 +16,7 @@ function getDateSchedule() {
       (err, res, body) => {
         body = JSON.parse(body)
         if (body.data && body.data.times) resolve(body.data.times)
-        else getDateSchedule(timeNow.sign).then( _res => { if (_res.length) resolve(_res) })
+        else getDateSchedule().then( _res => { if (_res.length) resolve(_res) })
       }
     )
   })
@@ -77,7 +77,9 @@ function setDelay(){
     return 3600000
   else if(timeObj.getMinutes() < 59)
     return 60000
-  else return 8000
+  else if(timeObj.getSeconds() < 54) 
+    return 6000
+  else return 1000
 }
 
 function log(timeIndex, personIndex){
